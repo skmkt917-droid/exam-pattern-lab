@@ -1,0 +1,2 @@
+PyMuPDF==1.27.1
+PySide6-Essentials==6.12.0

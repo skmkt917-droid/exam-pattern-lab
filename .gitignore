@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+# API 키
+app/settings/.env
+
+# 앱이 고른 모델
+app/cache/
+
+# 받은 결과
+output/
