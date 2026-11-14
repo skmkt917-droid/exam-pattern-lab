@@ -772,7 +772,7 @@ def build_sheet(pdf_path, index_text, code_names, api_key, vision_model, vision_
     folder = image_folder_name(pdf_path.stem)
     with tempfile.TemporaryDirectory(prefix="epl-sheet-") as temp_name:
         root = Path(temp_name)
-        html_path = root / f"{pdf_path.stem}_주석.html"
+        html_path = root / f"{pdf_path.stem}_annotated.html"
         image_dir = root / "images" / folder
         crop_items(pdf_path, items, image_dir, api_key, vision_model, vision_timeout)
         document = render(pdf_path, items, code_names, folder)

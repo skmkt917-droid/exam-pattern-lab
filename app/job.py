@@ -76,7 +76,7 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
                 config.model.name,
                 config.model.vision_timeout_seconds,
             )
-            held = HeldPdf(f"{pdf_path.stem}_주석.pdf", data)
+            held = HeldPdf(f"{pdf_path.stem}_annotated.pdf", data)
             produced(held)
             log(f"{mark} 보관: {held.name}")
             log(f"{mark} 토큰 input={result.input_tokens} output={result.output_tokens} stop={result.stop_reason}")
