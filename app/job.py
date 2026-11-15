@@ -4,13 +4,18 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from catalog import TYPES_FILE
+from catalog import display_path as catalog_path
 from errors import AppError
+from gemini import complete as complete_gemini
 from gemini import generate as generate_gemini
 from gemini import redact
+from grok import complete as complete_grok
 from grok import generate as generate_grok
 from settings import fill_prompt, load
 
 RUNNABLE = {"GEMINI": generate_gemini, "GROK": generate_grok}
+COMPLETE = {"GEMINI": complete_gemini, "GROK": complete_grok}
 from sheet import build_combined
 
 
@@ -43,6 +48,7 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
     log(f"현재 키: {config.key.provider}")
     log(f"모델: {config.model.name}")
     log("지시: app/settings/prompt.md")
+    log(f"유형: {catalog_path(TYPES_FILE)}")
     for name in config.rule_names:
         log(f"지침: app/settings/rules/{name}")
     log(f"PDF {total}개를 처리합니다.")
@@ -90,6 +96,18 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
     log(f"조판: {joined}")
     report(steps, steps, "조판", total, total)
     try:
+        def complete(prompt):
+            result = COMPLETE[config.key.provider](
+                config.key.value,
+                config.model.name,
+                prompt,
+                0,
+                config.model.max_output_tokens,
+                config.model.timeout_seconds,
+            )
+            log(f"세부유형 토큰 input={result.input_tokens} output={result.output_tokens}")
+            return result.text
+
         data = build_combined(
             indexed,
             config.code_names,
@@ -97,6 +115,9 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
             config.model.name,
             config.model.vision_timeout_seconds,
             config.key.provider,
+            config.catalog,
+            complete,
+            log,
         )
     except Exception as error:
         log("실패: " + redact(error, config.key.value))

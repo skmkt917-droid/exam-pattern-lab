@@ -213,6 +213,31 @@ def generate(api_key, model_name, pdf_path, prompt, temperature, max_output_toke
         if uploaded:
             _delete_file(api_key, uploaded[0], timeout)
 
+    return _index_result(body, model_name, api_key)
+
+
+def complete(api_key, model_name, prompt, temperature, max_output_tokens, timeout):
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "maxOutputTokens": max_output_tokens,
+            "temperature": temperature,
+        },
+    }
+    request = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "x-goog-api-key": api_key,
+        },
+        method="POST",
+    )
+    raw, _headers = _request(request, api_key, timeout)
+    return _index_result(raw.decode("utf-8"), model_name, api_key)
+
+
+def _index_result(body, model_name, api_key):
     try:
         parsed = json.loads(body)
     except json.JSONDecodeError as error:

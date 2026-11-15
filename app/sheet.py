@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from catalog import fill_types
 from errors import AppError
 
 import fitz
@@ -57,6 +58,7 @@ def parse_items(text):
             "page": int(page_match.group(0)) if page_match else None,
             "printed": fields.get("인쇄 쪽수", ""),
             "parent": fields.get("상위 문항", ""),
+            "type_id": fields.get("유형", ""),
             "structure": fields.get("대표 구조", ""),
             "support": fields.get("보조 구조", ""),
             "detail": fields.get("세부 코드", ""),
@@ -524,6 +526,21 @@ def plain_answer(text):
     text = text.replace("{", "").replace("}", "")
     return re.sub(r"\s+", " ", text).strip()
 
+def type_html(item):
+    lines = []
+    for label, key in (
+        ("과목", "semester"),
+        ("대단원", "big_chapter"),
+        ("중단원", "middle_chapter"),
+        ("소단원", "little_chapter"),
+        ("유형", "topic"),
+        ("세부유형", "subtopic"),
+    ):
+        value = (item.get(key) or "").strip()
+        if value:
+            lines.append(f"<p class=\"type\"><span class=\"k\">{esc(label)}</span> {esc(value)}</p>")
+    return "".join(lines)
+
 def answer_tag(answer):
     text = plain_answer(answer)
     if not text or text in {"없음", "-", "없음."}:
@@ -583,6 +600,7 @@ def render(items, names, title):
         for item in members:
             number = esc(item["number"])
             where = f"<p class=\"where\">{esc(problem_label(item))}</p>"
+            typed_as = type_html(item)
             if item.get("image"):
                 folder = item.get("image_stem") or "exam"
                 image_path = f"images/{folder}/{item['image']}".replace("\\", "/")
@@ -607,6 +625,7 @@ def render(items, names, title):
                 "<aside class=\"comment\">"
                 f"<div class=\"tags\">{tags}</div>"
                 f"{note}"
+                f"{typed_as}"
                 "</aside>"
                 "</article>"
             )
@@ -675,6 +694,7 @@ def render(items, names, title):
   }}
   article img {{ display: block; width: 100%; height: auto; }}
   .where {{ margin: 0 0 4px; font-size: 12px; font-weight: 700; line-height: 1.3; }}
+  .type {{ margin: 0 0 2px; font-size: 10px; line-height: 1.35; }}
   .stem {{ margin: 0; font-size: 12px; line-height: 1.45; }}
   .missing {{ margin: 0; font-size: 12px; }}
   .comment {{
@@ -700,11 +720,11 @@ def render(items, names, title):
   }}
   .k {{ font-weight: 700; }}
   .note {{
-    margin: 0;
-    padding: 1px 0 1px 10px;
+    margin: 0 0 4px;
+    padding: 0 0 0 8px;
     border-left: 2px solid #000;
-    font-size: 13px;
-    line-height: 1.6;
+    font-size: 9px;
+    line-height: 1.35;
   }}
   footer {{
     margin-top: 28px;
@@ -779,10 +799,12 @@ def render(items, names, title):
       object-position: top center;
     }}
     .where {{ margin: 0 0 1mm; font-size: 10px; }}
+    .type {{ margin: 0 0 0.6mm; font-size: 8px; line-height: 1.3; }}
     .stem {{ font-size: 10px; line-height: 1.35; max-height: 70mm; overflow: hidden; }}
     .comment {{ margin-top: 2mm; padding-top: 1.5mm; }}
     .tags {{ margin-bottom: 1mm; }}
     .tag {{ margin: 0 2px 1px 0; padding: 0 2px; font-size: 8px; line-height: 1.25; }}
+    .note {{ margin: 0 0 1mm; padding-left: 2mm; font-size: 8px; line-height: 1.3; }}
     .pager {{ margin: 3mm 0 0; padding-top: 2mm; border-top: 1px solid #000; font-size: 12px; }}
   }}
 </style>
@@ -862,7 +884,7 @@ def html_to_pdf(html_path):
             shutil.rmtree(tmp_dir, ignore_errors=True)
     raise RuntimeError("PDF를 만들지 못했습니다. " + " | ".join(errors))
 
-def build_combined(entries, code_names, api_key, vision_model, vision_timeout, provider="GEMINI"):
+def build_combined(entries, code_names, api_key, vision_model, vision_timeout, provider="GEMINI", catalog=None, complete=None, log=None):
     collected = []
     with tempfile.TemporaryDirectory(prefix="epl-sheet-") as temp_name:
         root = Path(temp_name)
@@ -873,6 +895,8 @@ def build_combined(entries, code_names, api_key, vision_model, vision_timeout, p
             _preamble, items = parse_items(index_text)
             if not items:
                 continue
+            if catalog is not None:
+                fill_types(items, catalog, complete, log)
             folder = f"{index:02d}-{image_folder_name(pdf_path.stem)}"
             image_dir = root / "images" / folder
             crop_items(pdf_path, items, image_dir, api_key, vision_model, vision_timeout, provider)

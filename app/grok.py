@@ -12,6 +12,17 @@ from gemini import IndexResult, _request, prepare_pdf
 FILE_LIMIT = 48 * 1024 * 1024
 
 
+def complete(api_key, model_name, prompt, temperature, max_output_tokens, timeout):
+    payload = {
+        "model": model_name,
+        "temperature": temperature,
+        "max_output_tokens": max_output_tokens,
+        "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
+    }
+    raw, _headers = _request(_json_request("https://api.x.ai/v1/responses", api_key, payload), api_key, timeout)
+    return _result(raw.decode("utf-8"), model_name)
+
+
 def generate(api_key, model_name, pdf_path, prompt, temperature, max_output_tokens, timeout):
     pdf_bytes = prepare_pdf(pdf_path)
     if len(pdf_bytes) > FILE_LIMIT:

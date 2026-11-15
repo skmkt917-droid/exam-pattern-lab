@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from catalog import load_catalog
 from errors import AppError
 
 
@@ -51,6 +52,7 @@ class Settings:
     rules_text: str
     rule_names: tuple
     code_names: dict
+    catalog: object
 
 
 def display_path(path):
@@ -195,8 +197,8 @@ def load_prompt():
     prompt = PROMPT_FILE.read_text(encoding="utf-8-sig").strip()
     if not prompt:
         raise AppError(f"지시문이 비어 있습니다: {display_path(PROMPT_FILE)}")
-    if "{pdf_name}" not in prompt or "{rules}" not in prompt:
-        raise AppError(f"{display_path(PROMPT_FILE)}에 {{pdf_name}}과 {{rules}}가 있어야 합니다.")
+    if "{pdf_name}" not in prompt or "{rules}" not in prompt or "{types}" not in prompt:
+        raise AppError(f"{display_path(PROMPT_FILE)}에 {{pdf_name}}, {{rules}}, {{types}}가 있어야 합니다.")
     return prompt
 
 
@@ -234,8 +236,14 @@ def load():
         rules_text=rules_text,
         rule_names=rule_names,
         code_names=code_names,
+        catalog=load_catalog(),
     )
 
 
 def fill_prompt(config, pdf_name):
-    return config.prompt.replace("{pdf_name}", str(pdf_name)).replace("{rules}", config.rules_text)
+    return (
+        config.prompt
+        .replace("{pdf_name}", str(pdf_name))
+        .replace("{rules}", config.rules_text)
+        .replace("{types}", config.catalog.prompt_text)
+    )
