@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from catalog import fill_types
+from catalog import assign_topic_ids, fill_types
 from errors import AppError
 
 import fitz
@@ -684,7 +684,7 @@ def render(items, names, title):
     grid-template-columns: 1fr 1fr;
     column-gap: 72px;
     row-gap: 160px;
-    align-items: start;
+    align-items: stretch;
   }}
   .grid::before {{
     content: "";
@@ -694,25 +694,38 @@ def render(items, names, title):
     left: 50%;
     border-left: 1px dashed #000;
   }}
-  article img {{ display: block; width: 100%; height: auto; }}
+  article {{
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }}
+  article img {{
+    display: block;
+    width: 100%;
+    height: 220px;
+    flex: 0 0 220px;
+    object-fit: contain;
+    object-position: top center;
+  }}
   .where {{ margin: 0 0 8px; font-size: 12px; font-weight: 700; line-height: 1.3; }}
-  .types {{ margin-top: 10px; }}
-  .type {{ margin: 0 0 5px; font-size: 10px; line-height: 1.45; }}
-  .type .k {{ margin-right: 8px; }}
-  .stem {{ margin: 0; font-size: 12px; line-height: 1.45; }}
-  .missing {{ margin: 0; font-size: 12px; }}
+  .types {{ margin-top: 4px; }}
+  .type {{ margin: 0; font-size: 10px; line-height: 1.25; }}
+  .type .k {{ margin-right: 6px; }}
+  .stem {{ margin: 0; font-size: 9px; line-height: 1.35; }}
+  .missing {{ margin: 0; font-size: 9px; line-height: 1.35; }}
   .comment {{
-    margin-top: 16px;
+    margin-top: auto;
     padding-top: 12px;
     border-top: 1px solid #000;
   }}
   .tags {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px 2px;
     margin: 0 0 10px;
-    line-height: 1.45;
   }}
   .tag {{
-    display: inline-block;
-    margin: 0 3px 2px 0;
     border: 1px solid #000;
     padding: 0 3px;
     font-size: 9px;
@@ -761,6 +774,7 @@ def render(items, names, title):
       display: flex;
       flex-direction: column;
       height: 274mm;
+      overflow: hidden;
       break-after: page;
       page-break-after: always;
     }}
@@ -768,7 +782,7 @@ def render(items, names, title):
       break-after: auto;
       page-break-after: auto;
     }}
-    h1 {{ margin: 0 0 4mm; padding-bottom: 2mm; border-bottom: 1px solid #000; font-size: 20px; }}
+    h1 {{ margin: 0 0 4mm; padding-bottom: 2mm; border-bottom: 1px solid #000; font-size: 20px; break-after: avoid; }}
     .cells {{
       position: relative;
       display: grid;
@@ -776,7 +790,7 @@ def render(items, names, title):
       min-height: 0;
       grid-template-columns: 1fr 1fr;
       grid-template-rows: 1fr 1fr;
-      align-items: start;
+      align-items: stretch;
       column-gap: 16mm;
       row-gap: 12mm;
     }}
@@ -789,27 +803,24 @@ def render(items, names, title):
       border-left: 1px dashed #000;
     }}
     article {{
-      display: block;
-      height: auto;
-      max-height: 100%;
+      height: 100%;
       overflow: hidden;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }}
     article img {{
-      display: block;
-      width: 100%;
-      height: auto;
-      max-height: 62mm;
-      object-fit: contain;
-      object-position: top center;
+      height: 220px;
+      flex-basis: 220px;
     }}
     .where {{ margin: 0 0 2mm; font-size: 10px; }}
-    .types {{ margin-top: 2.5mm; }}
-    .type {{ margin: 0 0 1.4mm; font-size: 8px; line-height: 1.4; }}
-    .type .k {{ margin-right: 2mm; }}
-    .stem {{ font-size: 10px; line-height: 1.35; max-height: 70mm; overflow: hidden; }}
-    .comment {{ margin-top: 4mm; padding-top: 3mm; }}
-    .tags {{ margin-bottom: 2.5mm; }}
-    .tag {{ margin: 0 2px 1.5px 0; padding: 0 2px; font-size: 8px; line-height: 1.35; }}
+    .types {{ margin-top: 1mm; }}
+    .type {{ margin: 0; font-size: 8px; line-height: 1.25; }}
+    .type .k {{ margin-right: 1.5mm; }}
+    .stem {{ font-size: 8px; line-height: 1.3; max-height: none; overflow: visible; }}
+    .missing {{ font-size: 8px; line-height: 1.3; }}
+    .comment {{ margin-top: auto; padding-top: 3mm; }}
+    .tags {{ gap: 0.3mm 0.6mm; margin-bottom: 2.5mm; }}
+    .tag {{ padding: 0 2px; font-size: 8px; line-height: 1.35; }}
     .note {{ margin: 0 0 2.5mm; padding: 0.4mm 0 0.4mm 2.5mm; font-size: 8px; line-height: 1.4; }}
     .pager {{ margin: 3mm 0 0; padding-top: 2mm; border-top: 1px solid #000; font-size: 12px; }}
   }}
@@ -890,8 +901,17 @@ def html_to_pdf(html_path):
             shutil.rmtree(tmp_dir, ignore_errors=True)
     raise RuntimeError("PDF를 만들지 못했습니다. " + " | ".join(errors))
 
+def _index_preview(text):
+    preview = " ".join((text or "").split())
+    if not preview:
+        return "(빈 응답)"
+    if len(preview) > 180:
+        return preview[:180] + "…"
+    return preview
+
 def build_combined(entries, code_names, api_key, vision_model, vision_timeout, provider="GEMINI", catalog=None, complete=None, log=None):
     collected = []
+    missed = []
     with tempfile.TemporaryDirectory(prefix="epl-sheet-") as temp_name:
         root = Path(temp_name)
         for index, (pdf_path, index_text) in enumerate(entries, start=1):
@@ -900,7 +920,10 @@ def build_combined(entries, code_names, api_key, vision_model, vision_timeout, p
                 raise AppError(f"PDF가 없습니다: {pdf_path.name}")
             _preamble, items = parse_items(index_text)
             if not items:
+                missed.append(_index_preview(index_text))
                 continue
+            if catalog is not None and complete is not None:
+                assign_topic_ids(items, catalog, complete, log)
             if catalog is not None:
                 fill_types(items, catalog, complete, log)
             folder = f"{index:02d}-{image_folder_name(pdf_path.stem)}"
@@ -911,7 +934,8 @@ def build_combined(entries, code_names, api_key, vision_model, vision_timeout, p
                 item["image_stem"] = folder
                 collected.append(item)
         if not collected:
-            raise AppError("색인에서 문항을 찾지 못했습니다.")
+            preview = missed[0] if missed else "(빈 응답)"
+            raise AppError("색인에서 문항을 찾지 못했습니다. 응답: " + preview)
         sources = []
         for pdf_path, _index_text in entries:
             name = Path(pdf_path).name

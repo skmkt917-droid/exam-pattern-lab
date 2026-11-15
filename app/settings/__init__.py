@@ -197,8 +197,8 @@ def load_prompt():
     prompt = PROMPT_FILE.read_text(encoding="utf-8-sig").strip()
     if not prompt:
         raise AppError(f"지시문이 비어 있습니다: {display_path(PROMPT_FILE)}")
-    if "{pdf_name}" not in prompt or "{rules}" not in prompt or "{types}" not in prompt:
-        raise AppError(f"{display_path(PROMPT_FILE)}에 {{pdf_name}}, {{rules}}, {{types}}가 있어야 합니다.")
+    if "{pdf_name}" not in prompt or "{rules}" not in prompt:
+        raise AppError(f"{display_path(PROMPT_FILE)}에 {{pdf_name}}과 {{rules}}가 있어야 합니다.")
     return prompt
 
 
@@ -245,5 +245,4 @@ def fill_prompt(config, pdf_name):
         config.prompt
         .replace("{pdf_name}", str(pdf_name))
         .replace("{rules}", config.rules_text)
-        .replace("{types}", config.catalog.prompt_text)
     )

@@ -105,7 +105,7 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
                 config.model.max_output_tokens,
                 config.model.timeout_seconds,
             )
-            log(f"세부유형 토큰 input={result.input_tokens} output={result.output_tokens}")
+            log(f"유형 토큰 input={result.input_tokens} output={result.output_tokens}")
             return result.text
 
         data = build_combined(
