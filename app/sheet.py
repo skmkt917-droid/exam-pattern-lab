@@ -539,7 +539,9 @@ def type_html(item):
         value = (item.get(key) or "").strip()
         if value:
             lines.append(f"<p class=\"type\"><span class=\"k\">{esc(label)}</span> {esc(value)}</p>")
-    return "".join(lines)
+    if not lines:
+        return ""
+    return "<div class=\"types\">" + "".join(lines) + "</div>"
 
 def answer_tag(answer):
     text = plain_answer(answer)
@@ -693,18 +695,20 @@ def render(items, names, title):
     border-left: 1px dashed #000;
   }}
   article img {{ display: block; width: 100%; height: auto; }}
-  .where {{ margin: 0 0 4px; font-size: 12px; font-weight: 700; line-height: 1.3; }}
-  .type {{ margin: 0 0 2px; font-size: 10px; line-height: 1.35; }}
+  .where {{ margin: 0 0 8px; font-size: 12px; font-weight: 700; line-height: 1.3; }}
+  .types {{ margin-top: 10px; }}
+  .type {{ margin: 0 0 5px; font-size: 10px; line-height: 1.45; }}
+  .type .k {{ margin-right: 8px; }}
   .stem {{ margin: 0; font-size: 12px; line-height: 1.45; }}
   .missing {{ margin: 0; font-size: 12px; }}
   .comment {{
-    margin-top: 10px;
-    padding-top: 6px;
+    margin-top: 16px;
+    padding-top: 12px;
     border-top: 1px solid #000;
   }}
   .tags {{
-    margin: 0 0 4px;
-    line-height: 1.35;
+    margin: 0 0 10px;
+    line-height: 1.45;
   }}
   .tag {{
     display: inline-block;
@@ -720,11 +724,11 @@ def render(items, names, title):
   }}
   .k {{ font-weight: 700; }}
   .note {{
-    margin: 0 0 4px;
-    padding: 0 0 0 8px;
+    margin: 0 0 12px;
+    padding: 1px 0 1px 10px;
     border-left: 2px solid #000;
     font-size: 9px;
-    line-height: 1.35;
+    line-height: 1.45;
   }}
   footer {{
     margin-top: 28px;
@@ -773,8 +777,8 @@ def render(items, names, title):
       grid-template-columns: 1fr 1fr;
       grid-template-rows: 1fr 1fr;
       align-items: start;
-      column-gap: 14mm;
-      row-gap: 8mm;
+      column-gap: 16mm;
+      row-gap: 12mm;
     }}
     .cells::before {{
       content: "";
@@ -798,13 +802,15 @@ def render(items, names, title):
       object-fit: contain;
       object-position: top center;
     }}
-    .where {{ margin: 0 0 1mm; font-size: 10px; }}
-    .type {{ margin: 0 0 0.6mm; font-size: 8px; line-height: 1.3; }}
+    .where {{ margin: 0 0 2mm; font-size: 10px; }}
+    .types {{ margin-top: 2.5mm; }}
+    .type {{ margin: 0 0 1.4mm; font-size: 8px; line-height: 1.4; }}
+    .type .k {{ margin-right: 2mm; }}
     .stem {{ font-size: 10px; line-height: 1.35; max-height: 70mm; overflow: hidden; }}
-    .comment {{ margin-top: 2mm; padding-top: 1.5mm; }}
-    .tags {{ margin-bottom: 1mm; }}
-    .tag {{ margin: 0 2px 1px 0; padding: 0 2px; font-size: 8px; line-height: 1.25; }}
-    .note {{ margin: 0 0 1mm; padding-left: 2mm; font-size: 8px; line-height: 1.3; }}
+    .comment {{ margin-top: 4mm; padding-top: 3mm; }}
+    .tags {{ margin-bottom: 2.5mm; }}
+    .tag {{ margin: 0 2px 1.5px 0; padding: 0 2px; font-size: 8px; line-height: 1.35; }}
+    .note {{ margin: 0 0 2.5mm; padding: 0.4mm 0 0.4mm 2.5mm; font-size: 8px; line-height: 1.4; }}
     .pager {{ margin: 3mm 0 0; padding-top: 2mm; border-top: 1px solid #000; font-size: 12px; }}
   }}
 </style>
