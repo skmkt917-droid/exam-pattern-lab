@@ -487,8 +487,8 @@ class MainWindow(QMainWindow):
         except Exception as error:
             self.log("실패: " + redact(error))
             return
-        if config.key.provider != "GEMINI":
-            self.log(f"실패: CURRENT_KEY={config.key.provider} 는 아직 호출할 수 없습니다. 지금은 GEMINI만 문항 색인을 실행합니다.")
+        if config.key.provider not in ("GEMINI", "GROK"):
+            self.log(f"실패: CURRENT_KEY={config.key.provider} 는 아직 호출할 수 없습니다. 지금은 GEMINI와 GROK만 문항 색인을 실행합니다.")
             return
         self.set_running(True)
         self.worker = IndexWorker(paths)

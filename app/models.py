@@ -39,6 +39,8 @@ def list_available(provider, api_key, timeout=LIST_TIMEOUT):
         models = list_claude(api_key, timeout)
     elif provider == "GPT":
         models = list_openai(api_key, timeout)
+    elif provider == "GROK":
+        models = list_grok(api_key, timeout)
     else:
         raise AppError(f"{provider} 모델 목록은 조회할 수 없습니다.")
     if not models:
@@ -111,6 +113,31 @@ def list_openai(api_key, timeout):
             continue
         found[model_id] = model_id
     return _sorted(found)
+
+
+def list_grok(api_key, timeout):
+    payload = _read_json(
+        "https://api.x.ai/v1/models",
+        {"Authorization": "Bearer " + api_key},
+        timeout,
+        api_key,
+    )
+    found = {}
+    for entry in payload.get("data") or []:
+        model_id = str(entry.get("id") or "").strip()
+        if not model_id or not _grok_chat(model_id):
+            continue
+        found[model_id] = model_id
+    return _sorted(found)
+
+
+def _grok_chat(model_id):
+    lowered = model_id.lower()
+    if any(token in lowered for token in ("embed", "tts", "whisper", "video", "imagine", "moderation")):
+        return False
+    if "image" in lowered and "vision" not in lowered:
+        return False
+    return True
 
 
 def _label(model_id, display):

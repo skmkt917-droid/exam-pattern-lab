@@ -30,7 +30,7 @@ python app/window.py
 ### 처음 한 번
 
 1. `app/settings/.env.example`을 `app/settings/.env`로 복사한다. 이미 파일이 있으면 그 파일을 고친다.
-2. `CURRENT_KEY=GEMINI`으로 두고 `GEMINI_API_KEY`에 키를 넣는다. 색인 실행은 지금 Gemini만 된다.
+2. `CURRENT_KEY`를 `GEMINI` 또는 `GROK`으로 두고 해당 키를 넣는다. Claude와 GPT는 모델 목록만 조회된다.
 3. `ExamPatternLab.exe`를 연다. 그 컴퓨터에 패키지가 없으면 설치가 끝난 뒤에 창이 열린다. 위쪽에 모델 이름이 보이면 그 모델로 실행한다. `모델을 고르세요`이면 모델을 먼저 고른다.
 
 온도, 출력 토큰, 대기 시간은 `app/settings/model.env`에서 바꾼다. 분류 기준은 `app/settings/rules/`, 색인에 시킬 말은 `app/settings/prompt.md`다. 앱에는 편집 화면이 없고, 다음 실행부터 파일 내용이 반영된다.
@@ -49,7 +49,7 @@ python app/window.py
 4. 실행 중에는 스피너가 돌고, PDF 추가와 빼기, 실행, 드롭이 막힌다. 로그는 PDF마다 이렇게 진행된다.
    - `[n/N] 전송`: Gemini에 PDF를 보내는 중
    - `[n/N] 색인`: 그 PDF의 문항 색인을 받음
-   - `[n/N] 실패`: 그 PDF만 건너뛰고 다음 PDF를 계속한다
+   - `[n/N] 실패` 뒤 `중단`: PDF를 넘기지 못하면 다음 파일로 가지 않고 멈춘다. 결과도 만들지 않는다
    - `조판` 뒤에 `보관`: 성공한 PDF를 대표 태그가 같은 문항끼리 묶어 결과 하나로 올림. 아직 디스크에 저장된 것은 아니다
 5. `응답이 출력 한도에서 끊겼습니다`가 보이면 그 주석 PDF는 문항이 빠졌을 수 있다. `model.env`의 `MAX_OUTPUT_TOKENS`를 올린 뒤 그 PDF만 다시 실행한다.
 
@@ -83,11 +83,11 @@ PDF는 파일 대화상자나 창 위로 끌어다 놓아 넣는다. `.pdf`만 �
 
 ## 처리
 
-PDF마다 전송하고 색인을 받은 뒤, 성공한 것을 대표 구조가 같은 문항끼리 묶어 주석 PDF 하나로 만든다. 각 문항에는 원본 파일 이름이 붙는다. 로그는 `[n/N] 전송`, `색인`, `실패`, 그리고 마지막 `조판`, `보관`이다.
+PDF마다 전송하고 색인을 받은 뒤, 모두 성공하면 대표 구조가 같은 문항끼리 묶어 주석 PDF 하나로 만든다. 넘기기에 실패하면 그 자리에서 멈추고 결과를 만들지 않는다. 각 문항에는 원본 파일 이름이 붙는다. 로그는 `[n/N] 전송`, `색인`, 그리고 마지막 `조판`, `보관`이다.
 
 1. `app/settings`를 읽는다. 키, 모델, 지시문, 분류 지침 중 하나라도 없으면 작업 스레드를 시작하지 않고 로그에 `실패:`를 남긴다.
-2. `CURRENT_KEY`가 `GEMINI`이 아니면 색인을 돌리지 않는다. Claude와 GPT 키는 모델 목록만 조회할 수 있다.
-3. PDF를 Base64로 붙여 `generativelanguage.googleapis.com/v1beta/models/{모델}:generateContent`에 보낸다. 지시문은 `prompt.md`의 `{pdf_name}`, `{rules}`를 채운 문자열이다.
+2. `CURRENT_KEY`가 `GEMINI` 또는 `GROK`이 아니면 색인을 돌리지 않는다. Claude와 GPT 키는 모델 목록만 조회할 수 있다.
+3. PDF를 파일로 올린 뒤 색인을 요청한다. Gemini는 Generative Language API, Grok은 `api.x.ai`의 Files API와 Responses API를 쓴다. 지시문은 `prompt.md`의 `{pdf_name}`, `{rules}`를 채운 문자열이다.
 4. 색인 마크다운에서 문항을 읽고, PyMuPDF로 해당 문항을 잘라낸다. 위치 잡기가 남으면 같은 모델에 페이지 이미지를 보내 상자를 받는다.
 5. 코드 이름이 붙은 HTML을 만들고, Edge 또는 Chrome `--headless=new --print-to-pdf`로 PDF 바이트를 만든다.
 6. 결과 목록에 하나를 올린다. 원본이 하나면 `{원본 stem}_annotated.pdf`, 여러 개면 `annotated.pdf`다.
@@ -102,18 +102,19 @@ PDF마다 전송하고 색인을 받은 뒤, 성공한 것을 대표 구조가 �
 
 | 파일 | 역할 |
 | --- | --- |
-| `app/settings/.env` | `CURRENT_KEY`와 `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `GPT_API_KEY`. 실제 키는 이 파일에만 둔다. |
+| `app/settings/.env` | `CURRENT_KEY`와 `GEMINI_API_KEY`, `CLAUDE_API_KEY`, `GPT_API_KEY`, `GROK_API_KEY`. 실제 키는 이 파일에만 둔다. |
 | `app/settings/.env.example` | 키 파일의 빈 틀 |
 | `app/settings/model.env` | `TEMPERATURE`, `MAX_OUTPUT_TOKENS`, `TIMEOUT_SECONDS`, `VISION_TIMEOUT_SECONDS`. 모델 이름은 없다. |
 | `app/settings/prompt.md` | 색인 지시문. `{pdf_name}`과 `{rules}`가 둘 다 있어야 한다. |
 | `app/settings/rules/*.md` | 분류 지침. 상대 경로 순으로 이어 붙이고, 파일 사이에 빈 줄을 넣는다. |
 | `app/cache/model.json` | 공급자별 선택 모델. 예: `{"GEMINI": "gemini-3.5-flash-lite"}`. 키는 넣지 않는다. |
 
-`CURRENT_KEY`는 `GEMINI`, `CLAUDE`, `GPT` 중 하나다. 모델 버튼을 누르면 그 키로 호출 가능한 모델을 조회하고, 고른 이름을 `model.json`에 공급자 키로 저장한다.
+`CURRENT_KEY`는 `GEMINI`, `CLAUDE`, `GPT`, `GROK` 중 하나다. 모델 버튼을 누르면 그 키로 호출 가능한 모델을 조회하고, 고른 이름을 `model.json`에 공급자 키로 저장한다.
 
 - Gemini: `GET /v1beta/models`. `generateContent`를 지원하고 이름이 `models/{id}`인 것만.
 - Claude: `GET https://api.anthropic.com/v1/models`
 - OpenAI: `GET https://api.openai.com/v1/models`. embedding, whisper, tts 같은 비대화 모델은 뺀다.
+- Grok: `GET https://api.x.ai/v1/models`. 이미지 생성과 임베딩 모델은 뺀다.
 
 선택한 모델이 없으면 실행은 `실패:`로 끝난다.
 

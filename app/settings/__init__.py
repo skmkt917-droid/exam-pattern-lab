@@ -19,7 +19,8 @@ RULES_DIR = SETTINGS_DIR / "rules"
 CACHE_DIR = APP_DIR / "cache"
 MODEL_CACHE = CACHE_DIR / "model.json"
 
-ALLOWED_KEYS = ("GEMINI", "CLAUDE", "GPT")
+ALLOWED_KEYS = ("GEMINI", "CLAUDE", "GPT", "GROK")
+KEY_CHOICES = ", ".join(ALLOWED_KEYS)
 RULE_SUFFIXES = {".md", ".txt"}
 ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$")
 CODE_LINE = re.compile(
@@ -107,9 +108,9 @@ def load_key():
     env = read_env(KEYS_FILE)
     current = str(env.get("CURRENT_KEY", "")).strip().upper()
     if not current:
-        raise AppError("CURRENT_KEY가 비어 있습니다. GEMINI, CLAUDE, GPT 중 하나를 지정하세요.")
+        raise AppError(f"CURRENT_KEY가 비어 있습니다. {KEY_CHOICES} 중 하나를 지정하세요.")
     if current not in ALLOWED_KEYS:
-        raise AppError(f"CURRENT_KEY={current} 는 사용할 수 없습니다. GEMINI, CLAUDE, GPT 중 하나를 지정하세요.")
+        raise AppError(f"CURRENT_KEY={current} 는 사용할 수 없습니다. {KEY_CHOICES} 중 하나를 지정하세요.")
     name = f"{current}_API_KEY"
     value = str(env.get(name, "")).strip()
     if not value:

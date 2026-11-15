@@ -373,7 +373,7 @@ def parse_model_json(text):
         raise ValueError("좌표 JSON이 없습니다.")
     return json.loads(stripped[start:end + 1])
 
-def request_ai_boxes(page, numbers, api_key, model, timeout):
+def request_ai_boxes(page, numbers, api_key, model, timeout, provider="GEMINI"):
     api_key = (api_key or "").strip()
     model = (model or "").strip()
     if not api_key or not model or not numbers:
@@ -402,6 +402,15 @@ def request_ai_boxes(page, numbers, api_key, model, timeout):
             "responseMimeType": "application/json",
         },
     }
+    if provider == "GROK":
+        from grok import read_boxes
+        try:
+            text = read_boxes(api_key, model, prompt, pixmap.tobytes("png"), timeout)
+            data = parse_model_json(text)
+        except Exception as error:
+            print(f"ai boxes failed: {str(error).replace(api_key, '[REDACTED]')}", file=sys.stderr)
+            return {}
+        return _boxes_from(data)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     request = urllib.request.Request(
         url,
@@ -430,6 +439,9 @@ def request_ai_boxes(page, numbers, api_key, model, timeout):
     except (ValueError, json.JSONDecodeError):
         print("ai boxes json parse failed", file=sys.stderr)
         return {}
+    return _boxes_from(data)
+
+def _boxes_from(data):
     boxes = {}
     for entry in data.get("boxes", []):
         try:
@@ -438,7 +450,7 @@ def request_ai_boxes(page, numbers, api_key, model, timeout):
             continue
     return boxes
 
-def crop_with_ai(document, pending, image_dir, api_key, model, timeout):
+def crop_with_ai(document, pending, image_dir, api_key, model, timeout, provider="GEMINI"):
     groups = {}
     for index, item, target in pending:
         page_no = page_number(item.get("page"), document.page_count)
@@ -452,7 +464,7 @@ def crop_with_ai(document, pending, image_dir, api_key, model, timeout):
         groups.setdefault(page_no, []).append((index, item, target))
     for page_no, group in groups.items():
         page = document[page_no - 1]
-        boxes = request_ai_boxes(page, [target for _index, _item, target in group], api_key, model, timeout)
+        boxes = request_ai_boxes(page, [target for _index, _item, target in group], api_key, model, timeout, provider)
         for index, item, target in group:
             rect = rect_from_ai_box(page, boxes.get(target))
             if rect is None or clip_is_answer_key(page, rect):
@@ -462,7 +474,7 @@ def crop_with_ai(document, pending, image_dir, api_key, model, timeout):
                 continue
             save_crop(item, index, page, rect, image_dir, page_no, "ai")
 
-def crop_items(pdf_path, items, image_dir, api_key, model, timeout):
+def crop_items(pdf_path, items, image_dir, api_key, model, timeout, provider="GEMINI"):
     document = fitz.open(pdf_path)
     pending = []
     try:
@@ -484,7 +496,7 @@ def crop_items(pdf_path, items, image_dir, api_key, model, timeout):
                 continue
             pending.append((index, item, target))
         if pending:
-            crop_with_ai(document, pending, image_dir, api_key, model, timeout)
+            crop_with_ai(document, pending, image_dir, api_key, model, timeout, provider)
     finally:
         document.close()
 
@@ -850,7 +862,7 @@ def html_to_pdf(html_path):
             shutil.rmtree(tmp_dir, ignore_errors=True)
     raise RuntimeError("PDF를 만들지 못했습니다. " + " | ".join(errors))
 
-def build_combined(entries, code_names, api_key, vision_model, vision_timeout):
+def build_combined(entries, code_names, api_key, vision_model, vision_timeout, provider="GEMINI"):
     collected = []
     with tempfile.TemporaryDirectory(prefix="epl-sheet-") as temp_name:
         root = Path(temp_name)
@@ -863,7 +875,7 @@ def build_combined(entries, code_names, api_key, vision_model, vision_timeout):
                 continue
             folder = f"{index:02d}-{image_folder_name(pdf_path.stem)}"
             image_dir = root / "images" / folder
-            crop_items(pdf_path, items, image_dir, api_key, vision_model, vision_timeout)
+            crop_items(pdf_path, items, image_dir, api_key, vision_model, vision_timeout, provider)
             for item in items:
                 item["source"] = pdf_path.name
                 item["image_stem"] = folder

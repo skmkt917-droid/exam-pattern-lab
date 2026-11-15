@@ -5,8 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from errors import AppError
-from gemini import generate, redact
+from gemini import generate as generate_gemini
+from gemini import redact
+from grok import generate as generate_grok
 from settings import fill_prompt, load
+
+RUNNABLE = {"GEMINI": generate_gemini, "GROK": generate_grok}
 from sheet import build_combined
 
 
@@ -29,8 +33,8 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
         log("실패: " + redact(error))
         report(0, 1, "중단")
         return
-    if config.key.provider != "GEMINI":
-        log(f"실패: CURRENT_KEY={config.key.provider} 는 아직 호출할 수 없습니다. 지금은 GEMINI만 문항 색인을 실행합니다.")
+    if config.key.provider not in RUNNABLE:
+        log(f"실패: CURRENT_KEY={config.key.provider} 는 아직 호출할 수 없습니다. 지금은 GEMINI와 GROK만 문항 색인을 실행합니다.")
         report(0, 1, "중단")
         return
 
@@ -58,7 +62,7 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
         try:
             if not pdf_path.is_file():
                 raise AppError(f"PDF가 없습니다: {pdf_path.name}")
-            result = generate(
+            result = RUNNABLE[config.key.provider](
                 config.key.value,
                 config.model.name,
                 pdf_path,
@@ -75,7 +79,9 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
             report(index * 2 + 2, steps, f"색인  ·  {pdf_path.name}", shown, total)
         except Exception as error:
             log(f"{mark} 실패: " + redact(error, config.key.value))
-            report(index * 2 + 2, steps, f"실패  ·  {pdf_path.name}", shown, total)
+            log("중단: PDF를 넘기지 못해 여기서 멈춥니다.")
+            report(index * 2 + 2, steps, "중단", shown, total)
+            return
 
     if not indexed:
         return
@@ -90,6 +96,7 @@ def process_pdfs(pdf_paths, log, produced, should_stop=None, progress=None):
             config.key.value,
             config.model.name,
             config.model.vision_timeout_seconds,
+            config.key.provider,
         )
     except Exception as error:
         log("실패: " + redact(error, config.key.value))
