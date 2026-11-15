@@ -38,10 +38,16 @@ def parse_items(text):
         body = parts[index + 1]
         body = re.split(r"(?m)^##\s+", body)[0]
         fields = {}
+        current = None
         for line in body.splitlines():
             match = FIELD_LINE.match(line.strip())
             if match:
-                fields[match.group(1).strip()] = match.group(2).strip()
+                current = match.group(1).strip()
+                fields[current] = match.group(2).strip()
+                continue
+            extra = line.strip()
+            if current and extra and not extra.startswith("#"):
+                fields[current] = (fields[current] + "\n" + extra).strip()
         number = fields.get("문항 번호") or heading
         page_text = fields.get("PDF 페이지", "")
         page_match = re.search(r"\d+", page_text)
@@ -58,6 +64,7 @@ def parse_items(text):
             "reason": fields.get("조건 부합 이유", ""),
             "answer": fields.get("정답", ""),
             "snippet": fields.get("식별 문구", ""),
+            "body": fields.get("문항 본문", ""),
         })
     return preamble, items
 
@@ -82,8 +89,10 @@ def page_label(item):
     printed_no = printed.group(0) if printed else ""
     pdf_no = str(item["page"]) if item.get("page") else ""
     if printed_no and pdf_no and printed_no != pdf_no:
-        return f"PDF {pdf_no}쪽, 인쇄 {printed_no}쪽"
-    return printed_no or pdf_no or "?"
+        return f"p{pdf_no} · 인쇄 p{printed_no}"
+    if pdf_no or printed_no:
+        return f"p{pdf_no or printed_no}"
+    return "p?"
 
 def sort_key(item):
     match = re.search(r"\d+", item["number"])
@@ -248,7 +257,7 @@ def collect_elements(page):
         elements.append(rect)
     return elements
 
-def clip_rect(page, anchor, anchors):
+def span_rect(page, anchor, anchors):
     height = page.rect.height
     bands = column_bands(anchors, page.rect.width)
     x0, x1 = band_for(anchor["x"], bands)
@@ -276,9 +285,33 @@ def clip_rect(page, anchor, anchors):
     if y1 < y0 + 28:
         y1 = min(y0 + 28, next_y - 2)
     rect = fitz.Rect(left_edge, y0, right_edge, y1) & page.rect
-    if rect.width < 40 or rect.height < 24:
+    if rect.width < 8 or rect.height < 8:
         return None
     return rect
+
+def clip_rect(page, anchor, anchors):
+    rect = span_rect(page, anchor, anchors)
+    if rect is None or rect.width < 40 or rect.height < 24:
+        return None
+    return rect
+
+def typed_problem(page, rect):
+    if rect is None:
+        return ""
+    text = page.get_text("text", clip=rect) or ""
+    lines = []
+    for line in text.splitlines():
+        cleaned = re.sub(r"[ \t]+", " ", line).strip()
+        if cleaned:
+            lines.append(cleaned)
+    return "\n".join(lines).strip()
+
+def remember_text(item, page, rect):
+    if rect is None or clip_is_answer_key(page, rect):
+        return
+    text = typed_problem(page, rect)
+    if len(text) >= 8:
+        item["typed"] = text
 
 def image_name(number, index):
     match = re.fullmatch(r"\d+", number.strip())
@@ -424,6 +457,8 @@ def crop_with_ai(document, pending, image_dir, api_key, model, timeout):
             rect = rect_from_ai_box(page, boxes.get(target))
             if rect is None or clip_is_answer_key(page, rect):
                 item["crop_note"] = "문항 영역을 정하지 못했습니다."
+                if rect is not None:
+                    remember_text(item, page, rect)
                 continue
             save_crop(item, index, page, rect, image_dir, page_no, "ai")
 
@@ -442,6 +477,8 @@ def crop_items(pdf_path, items, image_dir, api_key, model, timeout):
             preferred = page_number(item.get("page"), document.page_count)
             page, wanted, anchors, found_page = find_problem(document, target, preferred)
             rect = clip_rect(page, wanted, anchors) if wanted is not None else None
+            if wanted is not None:
+                remember_text(item, page, rect or span_rect(page, wanted, anchors))
             if rect is not None and not clip_is_answer_key(page, rect):
                 save_crop(item, index, page, rect, image_dir, found_page, "local")
                 continue
@@ -481,10 +518,37 @@ def answer_tag(answer):
         return ""
     return f"<span class=\"tag answer\"><span class=\"k\">답</span> {esc(text)}</span>"
 
-def render(pdf_path, items, names, image_stem):
-    title = Path(pdf_path).stem
+def problem_label(item):
+    number = str(item.get("number") or "").strip() or "?"
+    if "번" not in number:
+        number = f"{number}번"
+    place = f"{item.get('page_label') or page_label(item)} {number}"
+    source = (item.get("source") or "").strip()
+    if source:
+        return f"{source} · {place}"
+    return place
+
+def problem_text(item):
+    for key in ("typed", "body", "snippet"):
+        text = (item.get(key) or "").strip()
+        if len(text) >= 8 and text not in {"없음", "-", "없음."}:
+            return text
+    return ""
+
+def text_html(text):
+    return "<br>".join(esc(line) for line in text.splitlines() if line.strip())
+
+def group_code(item):
+    codes = item.get("structure") or []
+    return codes[0] if codes else ""
+
+def group_order(code):
+    match = re.search(r"\d+", code or "")
+    return (code == "", int(match.group(0)) if match else 10**6, code)
+
+def render(items, names, title):
     prepared = []
-    for item in sorted(items, key=sort_key):
+    for item in items:
         structure = split_codes(item.get("structure"))[:1]
         prepared.append({
             **item,
@@ -494,40 +558,60 @@ def render(pdf_path, items, names, image_stem):
             "relation": split_codes(item.get("relation"))[:1],
             "page_label": page_label(item),
         })
-
-    cards = []
+    grouped = {}
     for item in prepared:
-        number = esc(item["number"])
-        if item.get("image"):
-            image_path = f"images/{image_stem}/{item['image']}".replace("\\", "/")
-            figure = f"<img src=\"{esc(image_path)}\" alt=\"{number}번\">"
-        else:
-            note = item.get("crop_note") or "원본에서 이 문항을 잘라 내지 못했습니다."
-            figure = f"<p class=\"missing\">{esc(note)}</p>"
-        tags = answer_tag(item.get("answer")) + "".join(
-            tag_html(label, item[key], names)
-            for label, key in (("대표", "structure"), ("보조", "support"), ("세부", "detail"), ("의존", "relation"))
-        )
-        reason = (item.get("reason") or "").strip()
-        note = f"<p class=\"note\">{esc(reason)}</p>" if reason else ""
-        cards.append(
-            "<article>"
-            f"{figure}"
-            "<aside class=\"comment\">"
-            f"<div class=\"tags\">{tags}</div>"
-            f"{note}"
-            "</aside>"
-            "</article>"
-        )
+        grouped.setdefault(group_code(item), []).append(item)
+
+    cards_by_heading = []
+    for code in sorted(grouped, key=group_order):
+        members = sorted(grouped[code], key=lambda item: (item.get("source") or "", item.get("page") or 0, sort_key(item)))
+        name = names.get(code, "").strip()
+        heading = f"{code} {name}".strip() or "분류 없음"
+        cards = []
+        for item in members:
+            number = esc(item["number"])
+            where = f"<p class=\"where\">{esc(problem_label(item))}</p>"
+            if item.get("image"):
+                folder = item.get("image_stem") or "exam"
+                image_path = f"images/{folder}/{item['image']}".replace("\\", "/")
+                figure = f"<img src=\"{esc(image_path)}\" alt=\"{number}번\">"
+            else:
+                typed = problem_text(item)
+                if typed:
+                    figure = f"<div class=\"stem\">{text_html(typed)}</div>"
+                else:
+                    note = item.get("crop_note") or "원본에서 이 문항을 잘라 내지 못했습니다."
+                    figure = f"<p class=\"missing\">{esc(note)}</p>"
+            tags = answer_tag(item.get("answer")) + "".join(
+                tag_html(label, item[key], names)
+                for label, key in (("대표", "structure"), ("보조", "support"), ("세부", "detail"), ("의존", "relation"))
+            )
+            reason = (item.get("reason") or "").strip()
+            note = f"<p class=\"note\">{esc(reason)}</p>" if reason else ""
+            cards.append(
+                "<article>"
+                f"{where}"
+                f"{figure}"
+                "<aside class=\"comment\">"
+                f"<div class=\"tags\">{tags}</div>"
+                f"{note}"
+                "</aside>"
+                "</article>"
+            )
+        cards_by_heading.append((heading, cards))
 
     page_size = 4
-    chunks = [cards[i:i + page_size] for i in range(0, len(cards), page_size)] or [[]]
     pages = []
+    chunks = []
+    for heading, cards in cards_by_heading:
+        for start in range(0, len(cards), page_size):
+            chunks.append((heading, cards[start:start + page_size]))
+    chunks = chunks or [("분류 없음", [])]
     total_pages = len(chunks)
-    for index, chunk in enumerate(chunks, start=1):
+    for index, (heading, chunk) in enumerate(chunks, start=1):
         pages.append(
             "<section class=\"page\">"
-            f"<h1>{esc(title)}</h1>"
+            f"<h1>{esc(heading)}</h1>"
             "<div class=\"cells\">"
             f"{''.join(chunk)}"
             "</div>"
@@ -540,7 +624,7 @@ def render(pdf_path, items, names, image_stem):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(title)}</title>
+<title>{esc(title or "annotated")}</title>
 <style>
   * {{ box-sizing: border-box; }}
   body {{
@@ -578,23 +662,24 @@ def render(pdf_path, items, names, image_stem):
     border-left: 1px dashed #000;
   }}
   article img {{ display: block; width: 100%; height: auto; }}
-  .missing {{ margin: 0; font-size: 13px; }}
+  .where {{ margin: 0 0 4px; font-size: 12px; font-weight: 700; line-height: 1.3; }}
+  .stem {{ margin: 0; font-size: 12px; line-height: 1.45; }}
+  .missing {{ margin: 0; font-size: 12px; }}
   .comment {{
-    margin-top: 18px;
-    padding-top: 10px;
+    margin-top: 10px;
+    padding-top: 6px;
     border-top: 1px solid #000;
   }}
   .tags {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 6px;
-    margin: 0 0 8px;
+    margin: 0 0 4px;
+    line-height: 1.35;
   }}
   .tag {{
-    display: block;
+    display: inline-block;
+    margin: 0 3px 2px 0;
     border: 1px solid #000;
-    padding: 2px 7px;
-    font-size: 11px;
+    padding: 0 3px;
+    font-size: 9px;
     line-height: 1.35;
   }}
   .tag.answer {{
@@ -677,12 +762,15 @@ def render(pdf_path, items, names, image_stem):
       display: block;
       width: 100%;
       height: auto;
-      max-height: 76mm;
+      max-height: 62mm;
       object-fit: contain;
       object-position: top center;
     }}
-    .comment {{ margin-top: 4mm; padding-top: 2mm; }}
-    .tags {{ margin-bottom: 1.5mm; }}
+    .where {{ margin: 0 0 1mm; font-size: 10px; }}
+    .stem {{ font-size: 10px; line-height: 1.35; max-height: 70mm; overflow: hidden; }}
+    .comment {{ margin-top: 2mm; padding-top: 1.5mm; }}
+    .tags {{ margin-bottom: 1mm; }}
+    .tag {{ margin: 0 2px 1px 0; padding: 0 2px; font-size: 8px; line-height: 1.25; }}
     .pager {{ margin: 3mm 0 0; padding-top: 2mm; border-top: 1px solid #000; font-size: 12px; }}
   }}
 </style>
@@ -762,21 +850,34 @@ def html_to_pdf(html_path):
             shutil.rmtree(tmp_dir, ignore_errors=True)
     raise RuntimeError("PDF를 만들지 못했습니다. " + " | ".join(errors))
 
-def build_sheet(pdf_path, index_text, code_names, api_key, vision_model, vision_timeout):
-    pdf_path = Path(pdf_path)
-    if not pdf_path.is_file():
-        raise AppError(f"PDF가 없습니다: {pdf_path.name}")
-    _preamble, items = parse_items(index_text)
-    if not items:
-        raise AppError("색인에서 문항을 찾지 못했습니다.")
-    folder = image_folder_name(pdf_path.stem)
+def build_combined(entries, code_names, api_key, vision_model, vision_timeout):
+    collected = []
     with tempfile.TemporaryDirectory(prefix="epl-sheet-") as temp_name:
         root = Path(temp_name)
-        html_path = root / f"{pdf_path.stem}_annotated.html"
-        image_dir = root / "images" / folder
-        crop_items(pdf_path, items, image_dir, api_key, vision_model, vision_timeout)
-        document = render(pdf_path, items, code_names, folder)
-        html_path.write_text(document, encoding="utf-8-sig")
+        for index, (pdf_path, index_text) in enumerate(entries, start=1):
+            pdf_path = Path(pdf_path)
+            if not pdf_path.is_file():
+                raise AppError(f"PDF가 없습니다: {pdf_path.name}")
+            _preamble, items = parse_items(index_text)
+            if not items:
+                continue
+            folder = f"{index:02d}-{image_folder_name(pdf_path.stem)}"
+            image_dir = root / "images" / folder
+            crop_items(pdf_path, items, image_dir, api_key, vision_model, vision_timeout)
+            for item in items:
+                item["source"] = pdf_path.name
+                item["image_stem"] = folder
+                collected.append(item)
+        if not collected:
+            raise AppError("색인에서 문항을 찾지 못했습니다.")
+        sources = []
+        for pdf_path, _index_text in entries:
+            name = Path(pdf_path).name
+            if name not in sources:
+                sources.append(name)
+        title = sources[0] if len(sources) == 1 else "annotated"
+        html_path = root / "annotated.html"
+        html_path.write_text(render(collected, code_names, title), encoding="utf-8-sig")
         try:
             sheet_pdf = html_to_pdf(html_path)
         except RuntimeError as exc:
@@ -785,3 +886,12 @@ def build_sheet(pdf_path, index_text, code_names, api_key, vision_model, vision_
     if len(data) < 1000:
         raise AppError("PDF를 만들지 못했습니다.")
     return data
+
+def build_sheet(pdf_path, index_text, code_names, api_key, vision_model, vision_timeout):
+    return build_combined(
+        [(pdf_path, index_text)],
+        code_names,
+        api_key,
+        vision_model,
+        vision_timeout,
+    )
