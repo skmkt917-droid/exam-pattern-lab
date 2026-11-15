@@ -623,7 +623,7 @@ def render(items, names, title):
             cards.append(
                 "<article>"
                 f"{where}"
-                f"{figure}"
+                f"<div class=\"figure\">{figure}</div>"
                 "<aside class=\"comment\">"
                 f"<div class=\"tags\">{tags}</div>"
                 f"{note}"
@@ -700,13 +700,19 @@ def render(items, names, title):
     height: 100%;
     min-height: 0;
   }}
+  .figure {{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-height: 220px;
+  }}
   article img {{
     display: block;
     width: 100%;
-    height: 220px;
-    flex: 0 0 220px;
+    max-height: 220px;
     object-fit: contain;
-    object-position: top center;
+    object-position: center;
   }}
   .where {{ margin: 0 0 8px; font-size: 12px; font-weight: 700; line-height: 1.3; }}
   .types {{ margin-top: 4px; }}
@@ -715,7 +721,7 @@ def render(items, names, title):
   .stem {{ margin: 0; font-size: 9px; line-height: 1.35; }}
   .missing {{ margin: 0; font-size: 9px; line-height: 1.35; }}
   .comment {{
-    margin-top: auto;
+    margin-top: 16px;
     padding-top: 12px;
     border-top: 1px solid #000;
   }}
@@ -808,9 +814,11 @@ def render(items, names, title):
       break-inside: avoid;
       page-break-inside: avoid;
     }}
+    .figure {{
+      min-height: 0;
+    }}
     article img {{
-      height: 220px;
-      flex-basis: 220px;
+      max-height: 100%;
     }}
     .where {{ margin: 0 0 2mm; font-size: 10px; }}
     .types {{ margin-top: 1mm; }}
@@ -818,7 +826,7 @@ def render(items, names, title):
     .type .k {{ margin-right: 1.5mm; }}
     .stem {{ font-size: 8px; line-height: 1.3; max-height: none; overflow: visible; }}
     .missing {{ font-size: 8px; line-height: 1.3; }}
-    .comment {{ margin-top: auto; padding-top: 3mm; }}
+    .comment {{ margin-top: 4mm; padding-top: 3mm; }}
     .tags {{ gap: 0.3mm 0.6mm; margin-bottom: 2.5mm; }}
     .tag {{ padding: 0 2px; font-size: 8px; line-height: 1.35; }}
     .note {{ margin: 0 0 2.5mm; padding: 0.4mm 0 0.4mm 2.5mm; font-size: 8px; line-height: 1.4; }}
