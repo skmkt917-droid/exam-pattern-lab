@@ -5,6 +5,57 @@ import os
 import sys
 from pathlib import Path
 
+
+def ensure_packages():
+    """PySide6와 PyMuPDF가 없으면 requirements.txt로 설치한다."""
+    import importlib
+    import shutil
+    import subprocess
+
+    def ready():
+        try:
+            importlib.import_module("fitz")
+            importlib.import_module("PySide6.QtWidgets")
+        except Exception:
+            return False
+        return True
+
+    if ready():
+        return
+
+    requirements = Path(__file__).resolve().parent / "requirements.txt"
+    python = Path(sys.executable)
+    sibling = python.with_name("python.exe")
+    if sibling.is_file():
+        python = sibling
+    else:
+        found = shutil.which("python")
+        if found:
+            python = Path(found)
+
+    def run(args):
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0) if sys.platform == "win32" else 0
+        completed = subprocess.run([str(python), *args], creationflags=flags)
+        return completed.returncode
+
+    if run(["-m", "pip", "--version"]) != 0:
+        run(["-m", "ensurepip", "--upgrade"])
+    code = run(["-m", "pip", "install", "-r", str(requirements)])
+    if code != 0:
+        code = run(["-m", "pip", "install", "--user", "-r", str(requirements)])
+    importlib.invalidate_caches()
+    if code != 0 or not ready():
+        message = "패키지를 설치하지 못했습니다.\n" + str(requirements)
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, message, "ExamPatternLab", 0x10)
+        else:
+            print(message, file=sys.stderr)
+        raise SystemExit(1)
+
+
+ensure_packages()
+
 from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QIconEngine, QPainter, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer

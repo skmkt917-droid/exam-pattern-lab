@@ -8,10 +8,11 @@
 
 루트의 `ExamPatternLab.exe`가 PATH의 `pythonw.exe`(없으면 `pyw.exe`)로 `app/window.py`를 연다. 작업 디렉터리는 exe가 있는 폴더다. Python 코드를 고친 뒤에는 exe를 다시 만들 필요가 없다.
 
+PySide6나 PyMuPDF가 없으면 창을 열기 전에 `app/requirements.txt`를 설치한다. 설치 과정은 콘솔 창에 보인다. 일반 설치가 막히면 사용자 영역에 다시 설치한다.
+
 직접 띄울 때:
 
 ```text
-pip install -r app/requirements.txt
 python app/window.py
 ```
 
@@ -30,7 +31,7 @@ python app/window.py
 
 1. `app/settings/.env.example`을 `app/settings/.env`로 복사한다. 이미 파일이 있으면 그 파일을 고친다.
 2. `CURRENT_KEY=GEMINI`으로 두고 `GEMINI_API_KEY`에 키를 넣는다. 색인 실행은 지금 Gemini만 된다.
-3. `ExamPatternLab.exe`를 연다. 위쪽에 모델 이름이 보이면 그 모델로 실행한다. `모델을 고르세요`이면 모델을 먼저 고른다.
+3. `ExamPatternLab.exe`를 연다. 그 컴퓨터에 패키지가 없으면 설치가 끝난 뒤에 창이 열린다. 위쪽에 모델 이름이 보이면 그 모델로 실행한다. `모델을 고르세요`이면 모델을 먼저 고른다.
 
 온도, 출력 토큰, 대기 시간은 `app/settings/model.env`에서 바꾼다. 분류 기준은 `app/settings/rules/`, 색인에 시킬 말은 `app/settings/prompt.md`다. 앱에는 편집 화면이 없고, 다음 실행부터 파일 내용이 반영된다.
 
